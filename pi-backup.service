@@ -1,0 +1,16 @@
+[Unit]
+Description=Pi Backup dashboard (scheduled copies onto a BitLocker disk)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Root is needed for cryptsetup and mount.
+User=root
+EnvironmentFile=-/etc/pi-backup.env
+WorkingDirectory=/opt/pi-backup
+ExecStart=/usr/bin/python3 /opt/pi-backup/app.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

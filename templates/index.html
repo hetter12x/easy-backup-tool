@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pi Backup</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --card: #ffffff; --text: #1f2328; --muted: #6b7280; --border: #e3e6ea;
+    --accent: #2563eb; --accent-text: #ffffff; --bar: #e5e7eb; --input: #ffffff;
+    --ok: #166534; --ok-bg: #dcfce7; --bad: #b91c1c; --bad-bg: #fee2e2;
+    --warn: #92400e; --warn-bg: #fef3c7; --info: #1e40af; --info-bg: #dbeafe;
+    --grey: #4b5563; --grey-bg: #eceef1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101317; --card: #181c22; --text: #e6e8eb; --muted: #9aa3ae; --border: #2a3039;
+      --accent: #5b8def; --accent-text: #0b1220; --bar: #2a3039; --input: #11151a;
+      --ok: #86efac; --ok-bg: #12301d; --bad: #fca5a5; --bad-bg: #3b1616;
+      --warn: #fcd34d; --warn-bg: #3a2c0c; --info: #93c5fd; --info-bg: #15284a;
+      --grey: #c3c9d1; --grey-bg: #262b33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1150px; margin: 0 auto; padding: 16px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1.4fr; gap: 14px; margin-bottom: 14px; }
+  @media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .grid2 .card { margin-bottom: 0; min-width: 0; }
+  .path, .kv div { overflow-wrap: anywhere; }
+  .cardhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .cardhead h2 { margin: 0; }
+  label { display: block; margin-bottom: 10px; font-weight: 500; }
+  label.inline { display: inline-flex; align-items: center; gap: 5px; font-weight: 400; margin: 0 12px 6px 0; }
+  input[type=text], input[type=password], input[type=time], input[type=number], select {
+    display: block; width: 100%; margin-top: 4px; padding: 7px 9px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--input); color: var(--text); font: inherit; }
+  .row { display: flex; gap: 8px; align-items: flex-end; }
+  .row > * { flex: 1; }
+  .row > .shrink { flex: 0 0 auto; }
+  button { font: inherit; padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+           background: var(--card); color: var(--text); cursor: pointer; white-space: nowrap; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.danger { color: var(--bad); }
+  button.sm { padding: 3px 8px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+  .bar { height: 10px; background: var(--bar); border-radius: 99px; overflow: hidden; margin: 10px 0; }
+  .bar > div { height: 100%; background: var(--accent); border-radius: 99px; transition: width .5s; }
+  .bar.big { height: 16px; }
+  .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+  @media (max-width: 500px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .stat .v { font-size: 17px; font-weight: 600; }
+  .stat .k { font-size: 12px; color: var(--muted); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .b-success { color: var(--ok); background: var(--ok-bg); }
+  .b-failed, .b-interrupted { color: var(--bad); background: var(--bad-bg); }
+  .b-running, .b-queued { color: var(--info); background: var(--info-bg); }
+  .b-cancelled, .b-skipped, .b-paused { color: var(--warn); background: var(--warn-bg); }
+  .b-idle { color: var(--grey); background: var(--grey-bg); }
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 8px; border-top: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: none; }
+  td.nowrap, th.nowrap { white-space: nowrap; }
+  .msgline { font-size: 12px; color: var(--muted); max-width: 420px; }
+  .msgline.bad { color: var(--bad); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  .files { font-size: 12px; color: var(--muted); margin: 0; padding-left: 18px; }
+  .files li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note { padding: 8px 10px; border-radius: 6px; font-size: 13px; margin-top: 10px; }
+  .note.ok { color: var(--ok); background: var(--ok-bg); }
+  .note.bad { color: var(--bad); background: var(--bad-bg); }
+  .note:empty { display: none; }
+  pre.preview { font-size: 12px; background: var(--bg); padding: 8px; border-radius: 6px; margin: 6px 0 0; overflow-x: auto; }
+  details > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; gap: 8px; }
+  details > summary h2 { margin: 0; }
+  details[open] > summary { margin-bottom: 12px; }
+  .formbox { border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Pi Backup</h1>
+    <span class="muted small">Pi time: <span id="clock">…</span></span>
+  </header>
+
+  <div class="grid2">
+    <!-- Disk -->
+    <section class="card">
+      <h2>Disk</h2>
+      <div id="diskMounted" hidden>
+        <div class="kv" id="diskInfo"></div>
+        <div class="bar"><div id="diskBar" style="width:0"></div></div>
+        <div class="muted small" id="diskSpace"></div>
+        <div class="actions" style="margin-top:12px">
+          <button id="btnUnmount" class="danger">Unmount &amp; lock</button>
+        </div>
+      </div>
+      <form id="diskForm" hidden autocomplete="off">
+        <label>Disk
+          <div class="row">
+            <select id="devSelect"></select>
+            <button type="button" class="shrink" id="btnRefreshDisks" title="Look for disks again">Refresh</button>
+          </div>
+        </label>
+        <label>BitLocker password or recovery key
+          <input type="password" id="devPass" autocomplete="new-password">
+        </label>
+        <button type="submit" class="primary" id="btnMount">Unlock &amp; mount</button>
+        <p class="muted small">The password only goes to cryptsetup and is never saved, so after the Pi restarts the disk has to be unlocked here again.</p>
+      </form>
+      <div class="note" id="diskNote"></div>
+    </section>
+
+    <!-- Current -->
+    <section class="card">
+      <h2>Current copy</h2>
+      <div id="currentBox" class="muted">Loading…</div>
+      <div class="note" id="currentNote"></div>
+    </section>
+  </div>
+
+  <!-- Jobs -->
+  <section class="card">
+    <div class="cardhead">
+      <h2>Copy jobs</h2>
+      <button id="btnNewJob" class="primary">+ New job</button>
+    </div>
+    <div class="tablewrap" id="jobsBox"></div>
+    <form id="jobForm" class="formbox" hidden autocomplete="off">
+      <input type="hidden" id="jobId">
+      <div class="row">
+        <label>Name <input type="text" id="jobName" placeholder="Daily copy"></label>
+        <label class="shrink" style="width:130px">Time <input type="time" id="jobTime" value="18:00"></label>
+      </div>
+      <label>Folder on the server
+        <input type="text" id="jobRemote" placeholder="/data/export">
+        <span class="muted small">Starting with / = full path. Without / = relative to the login's home folder. Empty = home folder.</span>
+      </label>
+      <label>Folder on the disk
+        <input type="text" id="jobDest" value="{date}">
+        <span class="muted small">{date} = 2026-11-09, {time} = 18-00, {job} = job name. E.g. <code>{date}</code> or <code>subcontractor/{date}</code>.</span>
+      </label>
+      <div style="margin-bottom:10px">
+        <div style="font-weight:500;margin-bottom:4px">Days</div>
+        <div id="jobDays"></div>
+      </div>
+      <label class="inline"><input type="checkbox" id="jobVerify" checked> Check every file after copying (compares file list and sizes)</label><br>
+      <label class="inline"><input type="checkbox" id="jobEnabled" checked> Schedule enabled</label>
+      <div class="actions" style="margin-top:10px">
+        <button type="submit" class="primary">Save job</button>
+        <button type="button" id="btnTestPath">Test server folder</button>
+        <button type="button" id="btnCancelJob">Cancel</button>
+      </div>
+      <div class="note" id="jobNote"></div>
+    </form>
+  </section>
+
+  <!-- History -->
+  <section class="card">
+    <h2>History</h2>
+    <div class="tablewrap" id="historyBox"></div>
+  </section>
+
+  <!-- Connection -->
+  <details class="card" id="connCard">
+    <summary><h2>Server connection</h2><span class="muted small" id="connSummary"></span></summary>
+    <form id="connForm" autocomplete="off">
+      <div class="row">
+        <label class="shrink" style="width:110px">Protocol
+          <select id="connType"><option value="sftp">SFTP</option><option value="ftp">FTP</option></select>
+        </label>
+        <label>Host <input type="text" id="connHost" placeholder="10.0.0.5 or sftp.example.local"></label>
+        <label class="shrink" style="width:100px">Port <input type="text" id="connPort" placeholder="22"></label>
+      </div>
+      <div class="row">
+        <label>User <input type="text" id="connUser"></label>
+        <label>Password <input type="password" id="connPass" autocomplete="new-password" placeholder=""></label>
+      </div>
+      <label data-for="sftp">Private key file on the Pi (optional, instead of a password)
+        <input type="text" id="connKey" placeholder="/root/.ssh/id_ed25519">
+      </label>
+      <label class="inline" data-for="ftp"><input type="checkbox" id="connTls"> Use explicit TLS (FTPES)</label>
+      <label class="inline" id="clearPassWrap" hidden><input type="checkbox" id="connClearPass"> Remove saved password</label>
+      <div class="actions" style="margin-top:8px">
+        <button type="submit" class="primary">Save connection</button>
+        <button type="button" id="btnTestConn">Test connection</button>
+      </div>
+      <div class="note" id="connNote"></div>
+    </form>
+  </details>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let S = null, connFilled = false, disksLoaded = false;
+
+function human(n) {
+  n = Number(n) || 0; const u = ["B", "KB", "MB", "GB", "TB"]; let i = 0;
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return i ? n.toFixed(1) + " " + u[i] : n + " B";
+}
+function dur(sec) {
+  sec = Math.max(0, Math.round(Number(sec) || 0));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
+}
+const t = iso => iso ? iso.replace("T", " ").slice(0, 16) : "–";
+function secsBetween(a, b) { return a && b ? (new Date(b) - new Date(a)) / 1000 : null; }
+function note(id, text, ok) { const el = $(id); el.textContent = text || ""; el.className = "note " + (ok ? "ok" : "bad"); }
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, {
+    method: opts.method || (opts.body ? "POST" : "GET"),
+    headers: {"Content-Type": "application/json"},
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  let data = {};
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok || data.ok === false) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+// ---------- disk
+async function loadDisks() {
+  const sel = $("#devSelect");
+  sel.innerHTML = "<option>Looking…</option>";
+  try {
+    const d = await api("/api/disks");
+    disksLoaded = true;
+    if (d.error) note("#diskNote", d.error);
+    sel.innerHTML = d.disks.length ? d.disks.map(x =>
+      `<option value="${esc(x.path)}" ${x.fstype.toLowerCase() === "bitlocker" ? "selected" : ""}>` +
+      `${esc(x.path)} · ${human(x.size)} · ${esc(x.fstype || "unknown")}${x.label ? " · " + esc(x.label) : ""}${x.model ? " · " + esc(x.model) : ""}</option>`
+    ).join("") : "<option value=''>No USB disk found - plug it in and press Refresh</option>";
+  } catch (e) { sel.innerHTML = "<option value=''>Error</option>"; note("#diskNote", e.message); }
+}
+
+function renderDisk(d) {
+  $("#diskMounted").hidden = !d.mounted;
+  $("#diskForm").hidden = d.mounted;
+  if (d.mounted) {
+    $("#diskInfo").innerHTML =
+      `<div>Status</div><div><span class="badge b-success">Mounted${d.encrypted ? " · unlocked" : ""}</span></div>` +
+      `<div>Device</div><div>${esc(d.source || "–")}</div>` +
+      `<div>Folder</div><div>${esc(d.mount_point)}</div>`;
+    const pct = d.total ? d.used / d.total * 100 : 0;
+    $("#diskBar").style.width = pct.toFixed(1) + "%";
+    $("#diskSpace").textContent = `${human(d.free)} free of ${human(d.total)} (${pct.toFixed(0)}% used)`;
+  } else if (!disksLoaded) {
+    loadDisks();
+  }
+}
+
+$("#btnRefreshDisks").onclick = loadDisks;
+$("#diskForm").onsubmit = async e => {
+  e.preventDefault();
+  const btn = $("#btnMount"); btn.disabled = true; btn.textContent = "Unlocking…";
+  try {
+    const r = await api("/api/disk/mount", {body: {device: $("#devSelect").value, password: $("#devPass").value}});
+    $("#devPass").value = ""; note("#diskNote", r.message, true); refresh();
+  } catch (err) { note("#diskNote", err.message); }
+  btn.disabled = false; btn.textContent = "Unlock & mount";
+};
+$("#btnUnmount").onclick = async () => {
+  if (!confirm("Unmount and lock the disk?")) return;
+  try { const r = await api("/api/disk/unmount", {method: "POST"}); note("#diskNote", r.message, true); disksLoaded = false; refresh(); }
+  catch (e) { note("#diskNote", e.message); }
+};
+
+// ---------- current copy
+function renderCurrent() {
+  const box = $("#currentBox"), cur = S.current;
+  if (!cur || !cur.run) {
+    const next = S.jobs.filter(j => j.next_run).sort((a, b) => a.next_run.localeCompare(b.next_run))[0];
+    box.className = "";
+    box.innerHTML = `<span class="badge b-idle">Idle</span> <span class="muted">Nothing is copying right now.</span>` +
+      (next ? `<p>Next scheduled: <b>${esc(next.name)}</b> at ${t(next.next_run)}</p>` : `<p class="muted">No scheduled jobs.</p>`);
+    return;
+  }
+  const r = cur.run, p = cur.progress || {}, verifying = cur.phase === "verifying";
+  const done = verifying ? p.checks : p.bytes, total = verifying ? p.totalChecks : p.totalBytes;
+  const pct = total ? Math.min(100, done / total * 100) : 0;
+  const queued = S.queued.filter(q => q.id !== r.id);
+  box.className = "";
+  box.innerHTML = `
+    <div class="cardhead" style="margin-bottom:4px">
+      <div><b>${esc(r.job_name)}</b> <span class="badge b-running">${verifying ? "verifying" : "copying"}</span></div>
+      <button class="danger sm" data-act="cancel" data-id="${r.id}">Cancel</button>
+    </div>
+    <div class="muted small path">${esc(r.remote_path || "(home)")} → ${esc(r.dest || "")}</div>
+    <div class="bar big"><div style="width:${pct.toFixed(1)}%"></div></div>
+    <div class="small"><b>${pct.toFixed(1)}%</b> ${verifying
+        ? `· checked ${p.checks || 0} of ${p.totalChecks || 0} files`
+        : `· ${human(p.bytes)} of ${human(p.totalBytes)}`}
+      <span class="muted">(the total can still grow while the server's file list is being read)</span></div>
+    <div class="stats">
+      <div class="stat"><div class="v">${verifying ? "–" : human(p.speed) + "/s"}</div><div class="k">Speed</div></div>
+      <div class="stat"><div class="v">${p.eta != null ? dur(p.eta) : "–"}</div><div class="k">Time left</div></div>
+      <div class="stat"><div class="v">${dur(p.elapsedTime)}</div><div class="k">Running for</div></div>
+      <div class="stat"><div class="v">${p.transfers || 0} / ${p.totalTransfers || 0}</div><div class="k">Files copied</div></div>
+      <div class="stat"><div class="v">${p.checks || 0}</div><div class="k">Already there (skipped)</div></div>
+      <div class="stat"><div class="v" style="color:${p.errors ? "var(--bad)" : "inherit"}">${p.errors || 0}</div><div class="k">Errors (retried)</div></div>
+    </div>
+    ${cur.transferring.length ? `<div class="small muted">Now copying:</div><ul class="files">${cur.transferring.map(f =>
+      `<li>${esc(f.name)} · ${f.percentage ?? 0}% of ${human(f.size)}</li>`).join("")}</ul>` : ""}
+    ${queued.length ? `<p class="small">Waiting: ${queued.map(q => esc(q.job_name)).join(", ")}</p>` : ""}`;
+}
+
+// ---------- jobs
+$("#jobDays").innerHTML = DAYS.map((d, i) =>
+  `<label class="inline"><input type="checkbox" value="${i}" ${i < 5 ? "checked" : ""}> ${d}</label>`).join("");
+
+function scheduleText(j) {
+  if (!j.days.length) return "manual only";
+  const d = j.days.length === 7 ? "Every day" : j.days.join() === "0,1,2,3,4" ? "Mon–Fri" : j.days.map(i => DAYS[i]).join(", ");
+  return `${d} at ${j.time}`;
+}
+
+function renderJobs() {
+  const box = $("#jobsBox");
+  if (!S.jobs.length) { box.innerHTML = `<p class="muted">No jobs yet. Set up the server connection below, then add a job.</p>`; return; }
+  box.innerHTML = `<table><thead><tr><th>Name</th><th>From server</th><th>To disk</th><th>Schedule</th><th class="nowrap">Next run</th><th></th></tr></thead><tbody>` +
+    S.jobs.map(j => `<tr>
+      <td><b>${esc(j.name)}</b>${j.enabled ? "" : ` <span class="badge b-paused">paused</span>`}${j.verify ? `<div class="muted small">verified</div>` : ""}</td>
+      <td>${esc(j.remote_path || "(home)")}</td>
+      <td class="path">${esc(S.disk.mount_point)}/${esc(j.dest_template)}</td>
+      <td>${esc(scheduleText(j))}</td>
+      <td class="nowrap">${t(j.next_run)}</td>
+      <td class="nowrap">
+        <button class="sm" data-act="run" data-id="${j.id}">Run now</button>
+        <button class="sm" data-act="edit" data-id="${j.id}">Edit</button>
+        <button class="sm danger" data-act="delete" data-id="${j.id}">Delete</button>
+      </td></tr>`).join("") + `</tbody></table>`;
+}
+
+function openJobForm(j) {
+  $("#jobForm").hidden = false; note("#jobNote", "");
+  $("#jobId").value = j ? j.id : "";
+  $("#jobName").value = j ? j.name : "";
+  $("#jobTime").value = j ? j.time : "18:00";
+  $("#jobRemote").value = j ? j.remote_path : "";
+  $("#jobDest").value = j ? j.dest_template : "{date}";
+  $("#jobVerify").checked = j ? j.verify : true;
+  $("#jobEnabled").checked = j ? j.enabled : true;
+  document.querySelectorAll("#jobDays input").forEach(cb => cb.checked = j ? j.days.includes(+cb.value) : +cb.value < 5);
+  $("#jobName").focus();
+}
+$("#btnNewJob").onclick = () => openJobForm(null);
+$("#btnCancelJob").onclick = () => { $("#jobForm").hidden = true; };
+$("#jobForm").onsubmit = async e => {
+  e.preventDefault();
+  const body = {
+    id: $("#jobId").value || null, name: $("#jobName").value, time: $("#jobTime").value,
+    remote_path: $("#jobRemote").value, dest_template: $("#jobDest").value,
+    verify: $("#jobVerify").checked, enabled: $("#jobEnabled").checked,
+    days: [...document.querySelectorAll("#jobDays input:checked")].map(cb => +cb.value),
+  };
+  try { await api("/api/jobs", {body}); $("#jobForm").hidden = true; refresh(); }
+  catch (err) { note("#jobNote", err.message); }
+};
+$("#btnTestPath").onclick = () => testConn($("#jobRemote").value, "#jobNote", $("#btnTestPath"));
+
+// ---------- history
+function renderHistory() {
+  const box = $("#historyBox");
+  if (!S.history.length) { box.innerHTML = `<p class="muted">No copies yet.</p>`; return; }
+  box.innerHTML = `<table><thead><tr><th class="nowrap">Started</th><th>Job</th><th>Result</th><th>Size</th><th>Files</th><th>Took</th><th>Folder</th><th></th></tr></thead><tbody>` +
+    S.history.map(r => {
+      const live = S.current && S.current.run && S.current.run.id === r.id;
+      const bytes = live ? S.current.progress.bytes : r.bytes, files = live ? S.current.progress.transfers : r.files;
+      const took = secsBetween(r.started_at, r.finished_at || (live ? S.time : null));
+      const bad = ["failed", "interrupted"].includes(r.status);
+      return `<tr>
+        <td class="nowrap">${t(r.started_at || r.queued_at)}<div class="muted small">${esc(r.trigger)}</div></td>
+        <td><b>${esc(r.job_name)}</b>${r.message ? `<div class="msgline ${bad ? "bad" : ""}">${esc(r.message)}</div>` : ""}</td>
+        <td><span class="badge b-${esc(r.status)}">${esc(r.status)}</span></td>
+        <td class="nowrap">${bytes ? human(bytes) : "–"}</td>
+        <td>${files || "–"}</td>
+        <td class="nowrap">${took != null ? dur(took) : "–"}</td>
+        <td class="small path">${esc(r.dest || "–")}</td>
+        <td class="nowrap">
+          <a href="/api/runs/${r.id}/log" target="_blank"><button class="sm">Log</button></a>
+          ${["failed", "cancelled", "interrupted"].includes(r.status) ? `<button class="sm" data-act="retry" data-id="${r.id}">Retry</button>` : ""}
+          ${r.status === "queued" ? `<button class="sm danger" data-act="cancel" data-id="${r.id}">Cancel</button>` : ""}
+        </td></tr>`;
+    }).join("") + `</tbody></table>`;
+}
+
+// ---------- connection
+function showConnFields() {
+  const type = $("#connType").value;
+  document.querySelectorAll("[data-for]").forEach(el => el.hidden = el.dataset.for !== type);
+  $("#connPort").placeholder = type === "sftp" ? "22" : "21";
+}
+$("#connType").onchange = showConnFields;
+
+function fillConn(c) {
+  $("#connType").value = c.type || "sftp";
+  $("#connHost").value = c.host || ""; $("#connPort").value = c.port || "";
+  $("#connUser").value = c.user || ""; $("#connKey").value = c.key_file || "";
+  $("#connTls").checked = !!c.explicit_tls; $("#connPass").value = "";
+  $("#connPass").placeholder = c.has_pass ? "(saved - type to change)" : "";
+  $("#clearPassWrap").hidden = !c.has_pass; $("#connClearPass").checked = false;
+  $("#connSummary").textContent = c.host ? `${c.type.toUpperCase()} ${c.user ? c.user + "@" : ""}${c.host}${c.port ? ":" + c.port : ""}` : "not set up";
+  if (!c.host) $("#connCard").open = true;
+  showConnFields();
+}
+
+$("#connForm").onsubmit = async e => {
+  e.preventDefault();
+  const body = {
+    type: $("#connType").value, host: $("#connHost").value, port: $("#connPort").value, user: $("#connUser").value,
+    pass: $("#connPass").value, key_file: $("#connKey").value, explicit_tls: $("#connTls").checked,
+    clear_pass: $("#connClearPass").checked,
+  };
+  try { const r = await api("/api/connection", {body}); note("#connNote", r.message, true); connFilled = false; refresh(); }
+  catch (err) { note("#connNote", err.message); }
+};
+
+async function testConn(path, noteId, btn) {
+  btn.disabled = true; const label = btn.textContent; btn.textContent = "Testing…";
+  try {
+    const r = await api("/api/test", {body: {path}});
+    note(noteId, "", true);
+    $(noteId).innerHTML = esc(r.message) + (r.preview.length ? `<pre class="preview">${esc(r.preview.join("\n"))}${r.preview.length >= 15 ? "\n…" : ""}</pre>` : "");
+  } catch (e) { note(noteId, e.message); }
+  btn.disabled = false; btn.textContent = label;
+}
+$("#btnTestConn").onclick = () => testConn("", "#connNote", $("#btnTestConn"));
+
+// ---------- table buttons
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button[data-act]");
+  if (!b) return;
+  const {act, id} = b.dataset;
+  try {
+    if (act === "run") { const r = await api(`/api/jobs/${id}/run`, {method: "POST"}); note("#currentNote", r.message, true); }
+    if (act === "edit") return openJobForm(S.jobs.find(j => j.id === id));
+    if (act === "delete") {
+      if (!confirm("Delete this job? Copies already made stay on the disk.")) return;
+      await api(`/api/jobs/${id}`, {method: "DELETE"});
+    }
+    if (act === "retry") { const r = await api(`/api/runs/${id}/retry`, {method: "POST"}); note("#currentNote", r.message, true); }
+    if (act === "cancel") {
+      if (!confirm("Cancel this copy? Files already copied stay, and Retry continues from there.")) return;
+      await api(`/api/runs/${id}/cancel`, {method: "POST"});
+    }
+    refresh();
+  } catch (err) { note("#currentNote", err.message); }
+});
+
+// ---------- refresh loop
+async function refresh() {
+  try {
+    S = await api("/api/status");
+    $("#clock").textContent = t(S.time);
+    renderDisk(S.disk); renderCurrent(); renderJobs(); renderHistory();
+    if (!connFilled) { fillConn(S.connection); connFilled = true; }
+  } catch (e) { $("#clock").textContent = "offline (" + e.message + ")"; }
+}
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
