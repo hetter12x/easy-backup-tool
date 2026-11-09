@@ -58,6 +58,7 @@ The browser asks you to log in: use any user name and that password.
 | Variable | Default | Meaning |
 |---|---|---|
 | `PIB_PASSWORD` | (asked by installer) | Dashboard password. Empty = no login. |
+| `PIB_ALLOWED_IPS` | (asked by installer) | Computers allowed to open the dashboard: IPs or networks, comma separated, e.g. `192.168.100.21,192.168.100.22` or `10.0.5.0/24`. Others get "Access denied". Empty = any. The Pi itself is always allowed, so an SSH tunnel still works. |
 | `PIB_PORT` | `8080` | Web port. |
 | `PIB_MOUNT` | `/mnt/backup` | Where the disk is mounted. |
 | `PIB_TRANSFERS` | `4` | Files copied in parallel. More can be faster for many small files. |
@@ -66,6 +67,15 @@ The browser asks you to log in: use any user name and that password.
 
 Service logs: `journalctl -u pi-backup -f`. Per-run logs: the **Log** button in the history,
 or `/var/lib/pi-backup/logs/`.
+
+## Access from other computers
+
+Two ways, pick one:
+
+- **SSH tunnel** (nothing to open): `ssh -L 8080:localhost:8080 pi@<pi-ip>`, then browse to `http://localhost:8080`.
+- **Direct** (`http://<pi-ip>:8080`, always available): open port 8080 on the Pi's firewall only for the chosen PCs,
+  e.g. `sudo ufw allow from 192.168.100.21 to any port 8080 proto tcp`, and list the same PCs in `PIB_ALLOWED_IPS`
+  as a second lock. Give those PCs fixed IPs (DHCP reservations).
 
 ## Security notes
 

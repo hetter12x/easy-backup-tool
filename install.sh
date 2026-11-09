@@ -27,10 +27,16 @@ chmod 700 /var/lib/pi-backup
 if [ ! -f "$ENV_FILE" ]; then
   echo "==> Choose a password for the dashboard (any user name works when logging in)"
   read -r -s -p "Dashboard password: " PW; echo
+  echo "==> Which computers may open the dashboard? IPs or networks, comma separated"
+  echo "    (e.g. 192.168.100.21,192.168.100.22). Leave empty to allow any computer."
+  read -r -p "Allowed IPs: " ALLOWED
   umask 077
   cat > "$ENV_FILE" <<EOF
 # Pi Backup settings - restart after changes:  sudo systemctl restart pi-backup
 PIB_PASSWORD=$PW
+# Computers allowed to open the dashboard (comma separated IPs or networks, empty = any).
+# The Pi itself is always allowed, so an SSH tunnel keeps working.
+PIB_ALLOWED_IPS=$ALLOWED
 PIB_PORT=8080
 PIB_MOUNT=/mnt/backup
 PIB_TRANSFERS=4

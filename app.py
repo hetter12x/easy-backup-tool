@@ -9,6 +9,9 @@ Runs as root (cryptsetup and mount need it). Settings come from environment
 variables, normally set in /etc/pi-backup.env:
 
   PIB_PASSWORD   dashboard password (any user name); empty = no login
+  PIB_ALLOWED_IPS  IPs / networks allowed to open the dashboard, comma separated
+                 (e.g. "192.168.100.21, 192.168.100.22, 10.0.5.0/24"); empty = any.
+                 The Pi itself (127.0.0.1, used by SSH tunnels) is always allowed.
   PIB_PORT       web port (default 8080)
   PIB_MOUNT      where the disk is mounted (default /mnt/backup)
   PIB_DATA       where settings, history and logs live (default /var/lib/pi-backup)
@@ -18,6 +21,7 @@ variables, normally set in /etc/pi-backup.env:
 import collections
 import datetime as dt
 import hmac
+import ipaddress
 import json
 import os
 import queue
@@ -36,6 +40,22 @@ PASSWORD = os.environ.get("PIB_PASSWORD", "")
 PORT = int(os.environ.get("PIB_PORT", "8080"))
 TRANSFERS = os.environ.get("PIB_TRANSFERS", "4")
 RCLONE = os.environ.get("PIB_RCLONE", "rclone")
+
+
+def parse_allowed(text):
+    nets = []
+    for item in re.split(r"[,\s;]+", text.strip()):
+        if not item:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(item, strict=False))
+        except ValueError:
+            # Refuse to start rather than silently letting everyone in.
+            raise SystemExit(f"PIB_ALLOWED_IPS: '{item}' is not an IP address or network (like 192.168.100.0/24).")
+    return nets
+
+
+ALLOWED_NETS = parse_allowed(os.environ.get("PIB_ALLOWED_IPS", ""))
 MAPPER_NAME = "pibackup"
 MAPPER_DEV = "/dev/mapper/" + MAPPER_NAME
 KEEP_RUNS = 300  # history entries (and their logs) to keep
@@ -403,8 +423,23 @@ def err(msg, code=400):
     return jsonify(ok=False, error=msg), code
 
 
+def client_allowed(addr):
+    if not ALLOWED_NETS:
+        return True
+    try:
+        ip = ipaddress.ip_address(addr or "")
+    except ValueError:
+        return False
+    if ip.version == 6 and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.is_loopback or any(ip in net for net in ALLOWED_NETS)
+
+
 @app.before_request
 def check_login():
+    if not client_allowed(request.remote_addr):
+        return Response(f"Access denied: this computer ({request.remote_addr}) is not on the "
+                        "dashboard's allowed list (PIB_ALLOWED_IPS).", 403, mimetype="text/plain")
     if not PASSWORD:
         return None
     auth = request.authorization
@@ -661,6 +696,8 @@ def main():
     threading.Thread(target=scheduler, daemon=True).start()
     if not PASSWORD:
         print("WARNING: PIB_PASSWORD is not set - the dashboard has no login.", flush=True)
+    print("Allowed computers: " + (", ".join(str(n) for n in ALLOWED_NETS) + " (+ this Pi)"
+                                    if ALLOWED_NETS else "any"), flush=True)
     print(f"Pi Backup dashboard on port {PORT}", flush=True)
     try:
         from waitress import serve
