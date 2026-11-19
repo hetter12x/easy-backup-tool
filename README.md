@@ -65,6 +65,9 @@ The browser asks you to log in: use any user name and that password.
 | `PIB_DATA` | `/var/lib/pi-backup` | Settings (`config.json`), history and logs. |
 | `PIB_RCLONE` | `rclone` | rclone binary, e.g. a newer one in `/usr/local/bin/rclone`. |
 
+The server connection is written to `/var/lib/pi-backup/rclone.conf` as the remote `src`, so you can test it by hand:
+`sudo rclone --config /var/lib/pi-backup/rclone.conf lsf src:/some/folder`.
+
 Service logs: `journalctl -u pi-backup -f`. Per-run logs: the **Log** button in the history,
 or `/var/lib/pi-backup/logs/`.
 

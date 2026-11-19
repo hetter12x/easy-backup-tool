@@ -62,6 +62,7 @@ KEEP_RUNS = 300  # history entries (and their logs) to keep
 
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
+RCLONE_CONF = os.path.join(DATA_DIR, "rclone.conf")
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 
 DEFAULT_CONFIG = {
@@ -217,28 +218,38 @@ def next_run(job):
 
 # ---------------------------------------------------------------- rclone
 
-def rclone_env(conn):
-    """The source server is passed to rclone as the remote "src:" via env vars."""
-    env = dict(os.environ)
-    pre = "RCLONE_CONFIG_SRC_"
-    env[pre + "TYPE"] = conn.get("type") or "sftp"
+def write_rclone_conf(conn):
+    """Write the server as remote [src] into the app's own rclone config file (root only).
+    Debug by hand with:  sudo rclone --config /var/lib/pi-backup/rclone.conf lsf src:"""
+    def clean(value):
+        return str(value).replace("\r", "").replace("\n", "").strip()
+    lines = ["[src]", "type = " + (conn.get("type") or "sftp")]
     for key in ("host", "port", "user", "pass"):
         if conn.get(key):
-            env[pre + key.upper()] = str(conn[key])
+            lines.append(f"{key} = {clean(conn[key])}")
     if conn.get("type") == "sftp" and conn.get("key_file"):
-        env[pre + "KEY_FILE"] = conn["key_file"]
+        lines.append("key_file = " + clean(conn["key_file"]))
     if conn.get("type") == "ftp" and conn.get("explicit_tls"):
-        env[pre + "EXPLICIT_TLS"] = "true"
-    return env
+        lines.append("explicit_tls = true")
+    with lock:
+        tmp = RCLONE_CONF + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, RCLONE_CONF)
+    return RCLONE_CONF
 
 
-def run_rclone(args, env, log):
+def run_rclone(args, conf, log):
     """Run rclone, feed its JSON stats into current["progress"], write a readable log.
     Returns (exit code, last error line)."""
-    cmd = [RCLONE, *args, *RCLONE_FLAGS]
+    cmd = [RCLONE, "--config", conf, *args, *RCLONE_FLAGS]
     log.write(f"{now_iso()} $ {' '.join(cmd)}\n")
     log.flush()
-    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, encoding="utf-8", errors="replace", bufsize=1)
     current["proc"] = proc
     last_error, last_stats_log = "", 0.0
@@ -298,10 +309,10 @@ def execute(run):
     update_run(run_id, status="running", started_at=now_iso(), dest=dest)
     current.update(run_id=run_id, cancel=False, phase="copying", progress={})
 
-    env = rclone_env(conn)
+    conf = write_rclone_conf(conn)
     src = "src:" + run["remote_path"]
     with open(log_path(run_id), "a", encoding="utf-8") as log:
-        rc, err = run_rclone(["copy", src, dest], env, log)
+        rc, err = run_rclone(["copy", src, dest], conf, log)
         stats = current["progress"]
         result = {"bytes": stats.get("bytes", 0), "files": stats.get("transfers", 0)}
         if current["cancel"]:
@@ -310,7 +321,7 @@ def execute(run):
             return finish(run_id, "failed", f"Copy failed (rclone exit code {rc}). {err}".strip(), **result)
         if run["verify"]:
             current.update(phase="verifying", progress={})
-            rc, err = run_rclone(["check", src, dest, "--one-way", "--size-only"], env, log)
+            rc, err = run_rclone(["check", src, dest, "--one-way", "--size-only"], conf, log)
             if current["cancel"]:
                 return finish(run_id, "cancelled", "Cancelled during verification. Files were copied.", **result)
             if rc != 0:
@@ -580,11 +591,11 @@ def api_test():
     conn = get_config()["connection"]
     if not conn.get("host"):
         return err("Save the server connection first.")
-    r = run_cmd([RCLONE, "lsf", "src:" + path, "--max-depth", "1", "--contimeout", "15s",
-                 "--timeout", "30s", "--retries", "1", "--low-level-retries", "1"],
-                timeout=90, env=rclone_env(conn))
+    r = run_cmd([RCLONE, "--config", write_rclone_conf(conn), "lsf", "src:" + path, "--max-depth", "1",
+                 "--contimeout", "15s", "--timeout", "30s", "--retries", "1", "--low-level-retries", "1"],
+                timeout=90)
     if r.returncode != 0:
-        lines = [l for l in r.stderr.strip().splitlines() if l.strip()]
+        lines = [l for l in r.stderr.strip().splitlines() if l.strip() and "NOTICE" not in l]
         return err("Connection test failed: " + (" ".join(lines[-2:]) or f"code {r.returncode}"))
     entries = r.stdout.splitlines()
     return jsonify(ok=True, message=f"Connected. {len(entries)} items in '{path or '(home folder)'}'.",
