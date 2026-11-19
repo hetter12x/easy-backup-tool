@@ -14,7 +14,7 @@ ENV_FILE=/etc/pi-backup.env
 
 echo "==> Installing packages"
 apt-get update
-apt-get install -y python3-flask python3-waitress rclone cryptsetup ntfs-3g exfatprogs
+apt-get install -y python3-flask python3-waitress rclone cryptsetup ntfs-3g exfatprogs putty-tools
 
 echo "==> Copying the app to $APP"
 mkdir -p "$APP/templates"

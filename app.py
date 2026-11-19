@@ -40,6 +40,7 @@ PASSWORD = os.environ.get("PIB_PASSWORD", "")
 PORT = int(os.environ.get("PIB_PORT", "8080"))
 TRANSFERS = os.environ.get("PIB_TRANSFERS", "4")
 RCLONE = os.environ.get("PIB_RCLONE", "rclone")
+PUTTYGEN = os.environ.get("PIB_PUTTYGEN", "puttygen")
 
 
 def parse_allowed(text):
@@ -63,6 +64,7 @@ KEEP_RUNS = 300  # history entries (and their logs) to keep
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 HISTORY_FILE = os.path.join(DATA_DIR, "history.json")
 RCLONE_CONF = os.path.join(DATA_DIR, "rclone.conf")
+SSH_KEY = os.path.join(DATA_DIR, "ssh_key")  # OpenSSH copy of a converted .ppk key
 LOG_DIR = os.path.join(DATA_DIR, "logs")
 
 DEFAULT_CONFIG = {
@@ -227,8 +229,9 @@ def write_rclone_conf(conn):
     for key in ("host", "port", "user", "pass"):
         if conn.get(key):
             lines.append(f"{key} = {clean(conn[key])}")
-    if conn.get("type") == "sftp" and conn.get("key_file"):
-        lines.append("key_file = " + clean(conn["key_file"]))
+    key = conn.get("key_file_use") or conn.get("key_file")  # key_file_use = converted .ppk
+    if conn.get("type") == "sftp" and key:
+        lines.append("key_file = " + clean(key))
     if conn.get("type") == "ftp" and conn.get("explicit_tls"):
         lines.append("explicit_tls = true")
     with lock:
@@ -570,19 +573,75 @@ def api_connection():
         if r.returncode != 0:
             return err("Could not store the password: " + r.stderr.strip())
         new_pass = r.stdout.strip()
+
+    key_file = str(body.get("key_file", "")).strip()
+    key_pass = str(body.get("key_pass", ""))
+    old = get_config()["connection"]
+    key_use = key_file
+    message = "Connection saved."
+    if kind == "sftp" and key_file:
+        try:
+            with open(key_file, encoding="utf-8", errors="replace") as f:
+                first_line = f.readline()
+        except OSError as e:
+            return err(f"Can't read the key file {key_file}: {e.strerror}")
+        if first_line.startswith("PuTTY-User-Key-File-"):
+            unchanged = (key_file == old.get("key_file") and old.get("key_file_use") == SSH_KEY
+                         and os.path.exists(SSH_KEY) and not key_pass)
+            if unchanged:
+                key_use = SSH_KEY  # already converted earlier, nothing to do
+            else:
+                error = convert_ppk(key_file, key_pass)
+                if error:
+                    return err(error)
+                key_use = SSH_KEY
+                message = "Connection saved. The PuTTY key was converted for rclone."
+
     with lock:
         cfg = get_config()
         conn = cfg["connection"]
         conn.update(type=kind, host=str(body.get("host", "")).strip(), port=port,
-                    user=str(body.get("user", "")).strip(),
-                    key_file=str(body.get("key_file", "")).strip(),
+                    user=str(body.get("user", "")).strip(), key_file=key_file, key_file_use=key_use,
                     explicit_tls=bool(body.get("explicit_tls")))
         if new_pass is not None:
             conn["pass"] = new_pass
         elif body.get("clear_pass"):
             conn["pass"] = ""
         save_json(CONFIG_FILE, cfg)
-    return jsonify(ok=True, message="Connection saved.")
+    return jsonify(ok=True, message=message)
+
+
+def convert_ppk(ppk_path, passphrase):
+    """Convert a PuTTY .ppk key into an OpenSSH key at SSH_KEY (root only, no passphrase).
+    The passphrase is only used for this conversion and is never stored. Returns an error or ""."""
+    if shutil.which(PUTTYGEN) is None:
+        return "To use a PuTTY .ppk key, install puttygen on the Pi:  sudo apt install putty-tools"
+    old_file, new_file, tmp = SSH_KEY + ".old", SSH_KEY + ".new", SSH_KEY + ".tmp"
+    try:
+        for path, text in ((old_file, passphrase), (new_file, "")):
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(text)
+        r = run_cmd([PUTTYGEN, ppk_path, "-O", "private-openssh", "--old-passphrase", old_file,
+                     "--new-passphrase", new_file, "-o", tmp], input_text="", timeout=60)
+        if r.returncode != 0 or not os.path.exists(tmp):
+            detail = (r.stderr or r.stdout).strip()
+            if "passphrase" in detail.lower() or "decrypt" in detail.lower():
+                return ("This .ppk key is protected by a passphrase: enter it in 'Key passphrase' and save again"
+                        if not passphrase else "Wrong key passphrase.") + f" ({detail})"
+            return "Could not convert the .ppk key: " + (detail or f"puttygen exit code {r.returncode}")
+        try:
+            os.chmod(tmp, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp, SSH_KEY)
+        return ""
+    finally:
+        for path in (old_file, new_file, tmp):
+            try:
+                os.remove(path)
+            except OSError:
+                pass
 
 
 @app.post("/api/test")

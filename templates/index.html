@@ -189,9 +189,14 @@
         <label>User <input type="text" id="connUser"></label>
         <label>Password <input type="password" id="connPass" autocomplete="new-password" placeholder=""></label>
       </div>
-      <label data-for="sftp">Private key file on the Pi (optional, instead of a password)
-        <input type="text" id="connKey" placeholder="/root/.ssh/id_ed25519">
-      </label>
+      <div class="row" data-for="sftp">
+        <label>Private key file on the Pi (optional; OpenSSH or PuTTY .ppk)
+          <input type="text" id="connKey" placeholder="/home/keys/privateKey.ppk">
+        </label>
+        <label>Key passphrase (only if the key has one)
+          <input type="password" id="connKeyPass" autocomplete="new-password" placeholder="used once to convert a .ppk, never saved">
+        </label>
+      </div>
       <label class="inline" data-for="ftp"><input type="checkbox" id="connTls"> Use explicit TLS (FTPES)</label>
       <label class="inline" id="clearPassWrap" hidden><input type="checkbox" id="connClearPass"> Remove saved password</label>
       <div class="actions" style="margin-top:8px">
@@ -413,7 +418,7 @@ function fillConn(c) {
   $("#connType").value = c.type || "sftp";
   $("#connHost").value = c.host || ""; $("#connPort").value = c.port || "";
   $("#connUser").value = c.user || ""; $("#connKey").value = c.key_file || "";
-  $("#connTls").checked = !!c.explicit_tls; $("#connPass").value = "";
+  $("#connTls").checked = !!c.explicit_tls; $("#connPass").value = ""; $("#connKeyPass").value = "";
   $("#connPass").placeholder = c.has_pass ? "(saved - type to change)" : "";
   $("#clearPassWrap").hidden = !c.has_pass; $("#connClearPass").checked = false;
   $("#connSummary").textContent = c.host ? `${c.type.toUpperCase()} ${c.user ? c.user + "@" : ""}${c.host}${c.port ? ":" + c.port : ""}` : "not set up";
@@ -425,7 +430,8 @@ $("#connForm").onsubmit = async e => {
   e.preventDefault();
   const body = {
     type: $("#connType").value, host: $("#connHost").value, port: $("#connPort").value, user: $("#connUser").value,
-    pass: $("#connPass").value, key_file: $("#connKey").value, explicit_tls: $("#connTls").checked,
+    pass: $("#connPass").value, key_file: $("#connKey").value, key_pass: $("#connKeyPass").value,
+    explicit_tls: $("#connTls").checked,
     clear_pass: $("#connClearPass").checked,
   };
   try { const r = await api("/api/connection", {body}); note("#connNote", r.message, true); connFilled = false; refresh(); }

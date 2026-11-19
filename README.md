@@ -25,7 +25,11 @@ The browser asks you to log in: use any user name and that password.
 
 ## First use
 
-1. **Server connection** (bottom of the page): SFTP or FTP, host, port, user, password. Press **Test connection**.
+1. **Server connection** (bottom of the page): SFTP or FTP, host, port, user, and a password or a private key file on
+   the Pi. Press **Test connection**. A PuTTY `.ppk` key (as used by WinSCP) works too: on save it is converted with
+   `puttygen` into a root-only OpenSSH copy (`/var/lib/pi-backup/ssh_key`). If the key has a passphrase, type it in
+   *Key passphrase*: it is used for that conversion only and never saved. If you replace the `.ppk` later, save the
+   connection again.
 2. **Disk**: plug in the disk, press Refresh, pick the `BitLocker` partition, enter the password
    (the 48-digit recovery key also works), then **Unlock & mount**.
 3. **+ New job**: name, server folder (press **Test server folder** to check it), days and time.
