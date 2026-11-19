@@ -378,9 +378,9 @@ def recover():
 
 # ---------------------------------------------------------------- disk
 
-def run_cmd(cmd, input_text=None, timeout=120):
+def run_cmd(cmd, input_text=None, timeout=120, env=None):
     try:
-        return subprocess.run(cmd, input=input_text, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(cmd, input=input_text, capture_output=True, text=True, timeout=timeout, env=env)
     except FileNotFoundError:
         return subprocess.CompletedProcess(cmd, 127, "", f"{cmd[0]} is not installed")
     except subprocess.TimeoutExpired:
@@ -581,7 +581,8 @@ def api_test():
     if not conn.get("host"):
         return err("Save the server connection first.")
     r = run_cmd([RCLONE, "lsf", "src:" + path, "--max-depth", "1", "--contimeout", "15s",
-                 "--timeout", "30s", "--retries", "1", "--low-level-retries", "1"], timeout=90)
+                 "--timeout", "30s", "--retries", "1", "--low-level-retries", "1"],
+                timeout=90, env=rclone_env(conn))
     if r.returncode != 0:
         lines = [l for l in r.stderr.strip().splitlines() if l.strip()]
         return err("Connection test failed: " + (" ".join(lines[-2:]) or f"code {r.returncode}"))
