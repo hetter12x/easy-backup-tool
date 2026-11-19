@@ -1,9 +1,9 @@
 # Pi Backup
 
-A small web dashboard for a Raspberry Pi that replaces the daily manual WinSCP copy:
+A small web dashboard first designed for a Raspberry Pi that replaces the daily manual WinSCP copy:
 
 1. **Unlock and mount** the BitLocker USB disk (password entered in the browser and never saved).
-2. **Schedule copy jobs**: which folder on the subcontractor's SFTP/FTP server, which days and at what time.
+2. **Schedule copy jobs**: which folder on the server's SFTP/FTP server, which days and at what time.
    Each run goes into a new folder named with the date (`/mnt/backup/2026-11-09`).
 3. **Watch progress** (percent, speed, time left, files) and see in the **history** whether each copy
    succeeded, with a full log per run.
@@ -11,10 +11,7 @@ A small web dashboard for a Raspberry Pi that replaces the daily manual WinSCP c
 Copies are done by [rclone](https://rclone.org): it retries dropped connections, and **Retry** on a failed or
 interrupted run continues in the same folder, skipping files that are already there.
 
-## Install (on the Pi)
-
-Copy this folder to the Pi (e.g. `scp -r pi-backup-script pi@<pi-ip>:~`) and run:
-
+## Install
 ```bash
 cd ~/pi-backup-script && sudo bash install.sh
 ```
